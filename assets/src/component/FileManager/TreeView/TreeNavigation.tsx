@@ -2,21 +2,19 @@ import { Box, Collapse, Fade } from "@mui/material";
 
 import { ChevronRight, ExpandMore } from "@mui/icons-material";
 import { TreeView } from "@mui/x-tree-view";
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { TransitionGroup } from "react-transition-group";
-import {
-  defaultGroupPath,
-  defaultPath,
-  defaultSharedWithMePath,
-  defaultTrashPath,
-} from "../../../hooks/useNavigation.tsx";
-import { GroupPermission } from "../../../api/user.ts";
-import { useAppSelector } from "../../../redux/hooks.ts";
+import { defaultPath, defaultSharedWithMePath, defaultTrashPath } from "../../../hooks/useNavigation.tsx";
+import { GroupShareEntry, listGroupShares } from "../../../api/api.ts";
+import { useAppDispatch, useAppSelector } from "../../../redux/hooks.ts";
 import SessionManager, { UserSettings } from "../../../session";
-import { GroupBS } from "../../../session/utils.ts";
 import CrUri, { Filesystem } from "../../../util/uri.ts";
+import People from "../../Icons/People.tsx";
+import SideNavItem from "../../Frame/NavBar/SideNavItem.tsx";
 import { FileManagerIndex } from "../FileManager.tsx";
 import { FmIndexContext } from "../FmIndexContext.tsx";
+import GroupShareManage from "../Dialogs/GroupShareManage.tsx";
 import Pinned, { usePinned } from "./Pinned.tsx";
 import TreeFiles from "./TreeFiles.tsx";
 
@@ -70,10 +68,28 @@ const TreeNavigation = React.memo(
 
     const loginUser = SessionManager.currentLoginOrNull();
     const isLogin = !!loginUser;
-    const groupShareEnabled = React.useMemo(
-      () => !!loginUser && GroupBS(loginUser.user).enabled(GroupPermission.access_group_share),
-      [loginUser?.user?.group?.permission],
-    );
+
+    // Group share areas the current user can access or apply to (decoupled from primary group).
+    const dispatch = useAppDispatch();
+    const { t } = useTranslation("application");
+    const [groupShares, setGroupShares] = React.useState<GroupShareEntry[]>([]);
+    const [manageOpen, setManageOpen] = React.useState(false);
+    const isMain = index == FileManagerIndex.main;
+
+    const refreshGroupShares = useCallback(() => {
+      if (!isLogin || !isMain) {
+        return;
+      }
+      dispatch(listGroupShares())
+        .then((res) => setGroupShares(res?.groups ?? []))
+        .catch(() => {});
+    }, [dispatch, isLogin, isMain]);
+
+    useEffect(() => {
+      refreshGroupShares();
+    }, [refreshGroupShares]);
+
+    const joinedGroupShares = groupShares.filter((g) => !!g.uri);
 
     return (
       <FmIndexContext.Provider value={index}>
@@ -134,13 +150,23 @@ const TreeNavigation = React.memo(
                     {!disableSharedWithMe && (
                       <TreeFiles level={0} path={defaultSharedWithMePath} key={defaultSharedWithMePath} />
                     )}
-                    {groupShareEnabled && (
-                      <TreeFiles
+                    {isMain &&
+                      joinedGroupShares.map((g) => (
+                        <TreeFiles
+                          level={0}
+                          canDrop
+                          path={g.uri as string}
+                          key={g.uri}
+                          labelOverwrite={g.name}
+                          elements={currentFs == Filesystem.group && g.uri == base ? elements : undefined}
+                        />
+                      ))}
+                    {isMain && groupShares.length > 0 && (
+                      <SideNavItem
                         level={0}
-                        canDrop
-                        path={defaultGroupPath}
-                        key={defaultGroupPath}
-                        elements={currentFs == Filesystem.group ? elements : undefined}
+                        icon={<People fontSize="small" color="action" />}
+                        label={t("navbar.groupShareManage")}
+                        onClick={() => setManageOpen(true)}
                       />
                     )}
                     {!disableTrash && (
@@ -160,6 +186,15 @@ const TreeNavigation = React.memo(
             </TreeView>
           </Fade>
         </Box>
+        {isMain && (
+          <GroupShareManage
+            open={manageOpen}
+            onClose={() => {
+              setManageOpen(false);
+              refreshGroupShares();
+            }}
+          />
+        )}
       </FmIndexContext.Provider>
     );
   },

@@ -6,9 +6,45 @@ import (
 
 	"github.com/cloudreve/Cloudreve/v4/ent"
 	"github.com/cloudreve/Cloudreve/v4/ent/group"
+	"github.com/cloudreve/Cloudreve/v4/inventory/types"
 	"github.com/cloudreve/Cloudreve/v4/pkg/cache"
 	"github.com/cloudreve/Cloudreve/v4/pkg/conf"
+	"github.com/samber/lo"
 )
+
+// IsShareGroup reports whether the group offers a (joinable) shared file area:
+// the group-share permission is enabled and an owner + root folder are configured.
+func IsShareGroup(g *ent.Group) bool {
+	return g != nil && g.Settings != nil &&
+		g.Permissions != nil &&
+		g.Permissions.Enabled(int(types.GroupPermissionAccessGroupShare)) &&
+		g.Settings.ShareRootOwner > 0 && g.Settings.ShareRootID > 0
+}
+
+// CanAccessGroupShare reports whether user u may access group g's share area:
+// their primary group is g, they own the share area, they are an approved cross-group
+// member, or they are a system administrator.
+func CanAccessGroupShare(g *ent.Group, u *ent.User) bool {
+	if g == nil || u == nil {
+		return false
+	}
+	if u.Edges.Group != nil && u.Edges.Group.ID == g.ID {
+		return true
+	}
+	if g.Settings != nil {
+		if g.Settings.ShareRootOwner == u.ID {
+			return true
+		}
+		if lo.Contains(g.Settings.ShareMembers, u.ID) {
+			return true
+		}
+	}
+	if u.Edges.Group != nil && u.Edges.Group.Permissions != nil &&
+		u.Edges.Group.Permissions.Enabled(int(types.GroupPermissionIsAdmin)) {
+		return true
+	}
+	return false
+}
 
 type (
 	// Ctx keys for eager loading options.
@@ -34,6 +70,8 @@ type (
 		CountUsers(ctx context.Context, id int) (int, error)
 		// Upsert upserts a group.
 		Upsert(ctx context.Context, group *ent.Group) (*ent.Group, error)
+		// SaveSettings persists only the settings field of a group (used for share membership changes).
+		SaveSettings(ctx context.Context, group *ent.Group) error
 		// Delete deletes a group.
 		Delete(ctx context.Context, id int) error
 	}
@@ -110,6 +148,10 @@ func (c *groupClient) Upsert(ctx context.Context, group *ent.Group) (*ent.Group,
 	}
 
 	return res, nil
+}
+
+func (c *groupClient) SaveSettings(ctx context.Context, group *ent.Group) error {
+	return c.client.Group.UpdateOne(group).SetSettings(group.Settings).Exec(ctx)
 }
 
 func (c *groupClient) Delete(ctx context.Context, id int) error {

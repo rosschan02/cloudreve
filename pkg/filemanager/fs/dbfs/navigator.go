@@ -147,8 +147,8 @@ func init() {
 		NavigatorCapabilityDownloadFile: true,
 		NavigatorCapabilityEnterFolder:  true,
 	}, sharedWithMeNavigatorCapability)
-	// Group share area: members can read / write / delete (soft delete into owner's trash).
-	// Sharing and version control are intentionally not exposed to avoid acting on behalf of the owner.
+	// Group share area (full): owner / admin / primary-group members can read / write / delete
+	// (soft delete into owner's trash). Sharing and version control are intentionally not exposed.
 	boolset.Sets(map[NavigatorCapability]bool{
 		NavigatorCapabilityCreateFile:     true,
 		NavigatorCapabilityRenameFile:     true,
@@ -164,6 +164,19 @@ func init() {
 		NavigatorCapabilityEnterFolder:    true,
 		NavigatorCapabilityModifyProps:    true,
 	}, groupNavigatorCapability)
+	// Group share area (restricted): members who joined via application may only browse,
+	// download, upload files and create folders — they cannot delete, rename or modify.
+	// LockFile is required for the upload/create flows to work.
+	boolset.Sets(map[NavigatorCapability]bool{
+		NavigatorCapabilityListChildren:  true,
+		NavigatorCapabilityDownloadFile:  true,
+		NavigatorCapabilityGenerateThumb: true,
+		NavigatorCapabilityInfo:          true,
+		NavigatorCapabilityEnterFolder:   true,
+		NavigatorCapabilityUploadFile:    true,
+		NavigatorCapabilityCreateFile:    true,
+		NavigatorCapabilityLockFile:      true,
+	}, groupNavigatorRestrictedCapability)
 }
 
 // ==================== Base Navigator ====================
@@ -579,4 +592,10 @@ func newSharedWithMeUri(id string) *fs.URI {
 func newGroupUri(name string) *fs.URI {
 	res, _ := fs.NewUriFromString(constants.CloudreveScheme + "://" + string(constants.FileSystemGroup))
 	return res.Join(name)
+}
+
+// newGroupIDUri builds a group share URI scoped to a specific group: cloudreve://<gidHash>@group
+func newGroupIDUri(gidHash string) *fs.URI {
+	res, _ := fs.NewUriFromString(fmt.Sprintf("%s://%s@%s", constants.CloudreveScheme, gidHash, constants.FileSystemGroup))
+	return res
 }

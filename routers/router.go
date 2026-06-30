@@ -1281,6 +1281,34 @@ func initMasterRouter(dep dependency.Dep) *gin.Engine {
 				}
 			}
 
+			// Group shared file area: join requests & approval
+			groupShare := auth.Group("group/share")
+			{
+				// List all group share areas with the current user's relationship to each
+				groupShare.GET("",
+					middleware.RequiredScopes(types.ScopeUserInfoRead),
+					controllers.GroupShareList,
+				)
+				// Apply to join a group share area (with real name + reason)
+				groupShare.PUT(":id/member",
+					middleware.RequiredScopes(types.ScopeUserInfoWrite),
+					controllers.FromJSON[usersvc.ApplyGroupShareService](usersvc.ApplyGroupShareParamCtx{}),
+					controllers.GroupShareApply,
+				)
+				// List pending applicants (approver only)
+				groupShare.GET(":id/application",
+					middleware.RequiredScopes(types.ScopeUserInfoRead),
+					controllers.FromUri[usersvc.GroupShareIDService](usersvc.GroupShareIDParamCtx{}),
+					controllers.GroupShareApplications,
+				)
+				// Approve or reject a pending applicant (approver only)
+				groupShare.POST(":id/review",
+					middleware.RequiredScopes(types.ScopeUserInfoWrite),
+					controllers.FromJSON[usersvc.ReviewGroupShareService](usersvc.ReviewGroupShareParamCtx{}),
+					controllers.GroupShareReview,
+				)
+			}
+
 			// WebDAV and devices
 			devices := auth.Group("devices")
 			devices.Use(middleware.RequiredScopes(types.ScopeDavAccountRead))

@@ -492,6 +492,53 @@ export function getSearchUser(keyword: string): ThunkResponse<User[]> {
   };
 }
 
+export interface GroupShareEntry {
+  id: string;
+  name: string;
+  status: "owner" | "member" | "pending" | "joinable";
+  is_approver: boolean;
+  pending_count: number;
+  uri?: string;
+}
+
+export interface GroupShareListResponse {
+  groups: GroupShareEntry[];
+}
+
+export function listGroupShares(): ThunkResponse<GroupShareListResponse> {
+  return async (dispatch, _getState) => {
+    return await dispatch(send("/group/share", { method: "GET" }, { ...defaultOpts }));
+  };
+}
+
+export interface GroupShareApplicant {
+  user: User;
+  real_name: string;
+  reason: string;
+}
+
+export function applyGroupShare(id: string, real_name: string, reason: string): ThunkResponse<any> {
+  return async (dispatch, _getState) => {
+    return await dispatch(
+      send(`/group/share/${id}/member`, { method: "PUT", data: { real_name, reason } }, { ...defaultOpts }),
+    );
+  };
+}
+
+export function listGroupShareApplications(id: string): ThunkResponse<GroupShareApplicant[]> {
+  return async (dispatch, _getState) => {
+    return await dispatch(send(`/group/share/${id}/application`, { method: "GET" }, { ...defaultOpts }));
+  };
+}
+
+export function reviewGroupShare(id: string, user_id: string, approve: boolean): ThunkResponse<any> {
+  return async (dispatch, _getState) => {
+    return await dispatch(
+      send(`/group/share/${id}/review`, { method: "POST", data: { user_id, approve } }, { ...defaultOpts }),
+    );
+  };
+}
+
 export function sendCreateShare(req: ShareCreateService): ThunkResponse<string> {
   return async (dispatch, _getState) => {
     return await dispatch(

@@ -13,6 +13,7 @@ import (
 	"github.com/cloudreve/Cloudreve/v4/ent"
 	"github.com/cloudreve/Cloudreve/v4/inventory"
 	"github.com/cloudreve/Cloudreve/v4/inventory/types"
+	"github.com/cloudreve/Cloudreve/v4/pkg/boolset"
 	"github.com/cloudreve/Cloudreve/v4/pkg/cache"
 	"github.com/cloudreve/Cloudreve/v4/pkg/filemanager/encrypt"
 	"github.com/cloudreve/Cloudreve/v4/pkg/filemanager/eventhub"
@@ -45,7 +46,8 @@ type (
 func NewDatabaseFS(u *ent.User, fileClient inventory.FileClient, shareClient inventory.ShareClient,
 	l logging.Logger, ls lock.LockSystem, settingClient setting.Provider,
 	storagePolicyClient inventory.StoragePolicyClient, hasher hashid.Encoder, userClient inventory.UserClient,
-	cache, stateKv cache.Driver, directLinkClient inventory.DirectLinkClient, encryptorFactory encrypt.CryptorFactory, eventHub eventhub.EventHub) fs.FileSystem {
+	cache, stateKv cache.Driver, directLinkClient inventory.DirectLinkClient, encryptorFactory encrypt.CryptorFactory, eventHub eventhub.EventHub,
+	groupClient inventory.GroupClient) fs.FileSystem {
 	return &DBFS{
 		user:                u,
 		navigators:          make(map[string]Navigator),
@@ -62,6 +64,7 @@ func NewDatabaseFS(u *ent.User, fileClient inventory.FileClient, shareClient inv
 		directLinkClient:    directLinkClient,
 		encryptorFactory:    encryptorFactory,
 		eventHub:            eventHub,
+		groupClient:         groupClient,
 	}
 }
 
@@ -82,6 +85,7 @@ type DBFS struct {
 	mu                  sync.Mutex
 	encryptorFactory    encrypt.CryptorFactory
 	eventHub            eventhub.EventHub
+	groupClient         inventory.GroupClient
 }
 
 func (f *DBFS) Recycle() {
@@ -738,7 +742,8 @@ func (f *DBFS) getNavigator(ctx context.Context, path *fs.URI, requiredCapabilit
 		case constants.FileSystemSharedWithMe:
 			n = NewSharedWithMeNavigator(f.user, f.fileClient, f.l, config, f.hasher)
 		case constants.FileSystemGroup:
-			n = NewGroupNavigator(f.user, f.fileClient, f.userClient, f.l, config, f.hasher)
+			n = NewGroupNavigator(f.user, f.fileClient, f.userClient, f.groupClient, f.l, config, f.hasher,
+				f.resolveGroupCapability(ctx, path))
 		default:
 			return nil, fmt.Errorf("unknown file system %q", pathFs)
 		}
@@ -773,6 +778,39 @@ func (f *DBFS) getNavigator(ctx context.Context, path *fs.URI, requiredCapabilit
 	return res, nil
 }
 
+// resolveGroupCapability picks the navigator capability set for the current user in the target
+// group share area: full control for the owner, system admins and primary-group members; a
+// restricted set (browse/download/upload/create-folder, no delete) for members who joined via
+// application. Falls back to the full set when resolution is not possible (To will reject access).
+func (f *DBFS) resolveGroupCapability(ctx context.Context, path *fs.URI) *boolset.BooleanSet {
+	gid := 0
+	if f.user.Edges.Group != nil {
+		gid = f.user.Edges.Group.ID
+	}
+	if rawID := path.ID(""); rawID != "" {
+		if decoded, err := f.hasher.Decode(rawID, hashid.GroupID); err == nil {
+			gid = decoded
+		}
+	}
+	if gid == 0 {
+		return groupNavigatorCapability
+	}
+
+	grp, err := f.groupClient.GetByID(ctx, gid)
+	if err != nil || grp.Settings == nil {
+		return groupNavigatorCapability
+	}
+
+	isPrimary := f.user.Edges.Group != nil && f.user.Edges.Group.ID == grp.ID
+	isOwner := grp.Settings.ShareRootOwner == f.user.ID
+	isAdmin := f.user.Edges.Group != nil && f.user.Edges.Group.Permissions != nil &&
+		f.user.Edges.Group.Permissions.Enabled(int(types.GroupPermissionIsAdmin))
+	if isPrimary || isOwner || isAdmin {
+		return groupNavigatorCapability
+	}
+	return groupNavigatorRestrictedCapability
+}
+
 func (f *DBFS) navigatorId(path *fs.URI) string {
 	uidHashed := hashid.EncodeUserID(f.hasher, f.user.ID)
 	switch path.FileSystem() {
@@ -783,10 +821,16 @@ func (f *DBFS) navigatorId(path *fs.URI) string {
 	case constants.FileSystemTrash:
 		return fmt.Sprintf("%s/%s", constants.FileSystemTrash, path.ID(uidHashed))
 	case constants.FileSystemGroup:
-		// Shared per group: key by group ID so all members of a group reuse the same navigator.
+		// Shared per group: key by the *target* group ID in the URI so each group share area
+		// gets its own navigator (a user may access several). Falls back to the primary group.
 		gid := 0
 		if f.user.Edges.Group != nil {
 			gid = f.user.Edges.Group.ID
+		}
+		if rawID := path.ID(""); rawID != "" {
+			if decoded, err := f.hasher.Decode(rawID, hashid.GroupID); err == nil {
+				gid = decoded
+			}
 		}
 		return fmt.Sprintf("%s/g%d", constants.FileSystemGroup, gid)
 	default:
@@ -813,9 +857,13 @@ func generateSavePath(policy *ent.StoragePolicy, req *fs.UploadRequest, user *en
 
 func canMoveOrCopyTo(src, dst *fs.URI, isCopy bool) bool {
 	if isCopy {
-		// Copy is allowed within "my" fs, or within the group share area.
-		return src.FileSystem() == dst.FileSystem() &&
-			(src.FileSystem() == constants.FileSystemMy || src.FileSystem() == constants.FileSystemGroup)
+		// Copy is allowed freely between "my" fs and the group share area (in either direction),
+		// so users can grab a copy of a group file into their own space, and vice versa.
+		// Copied files inherit the destination folder's owner, so quota is charged correctly.
+		inMyOrGroup := func(fsType constants.FileSystemType) bool {
+			return fsType == constants.FileSystemMy || fsType == constants.FileSystemGroup
+		}
+		return inMyOrGroup(src.FileSystem()) && inMyOrGroup(dst.FileSystem())
 	} else {
 		switch src.FileSystem() {
 		case constants.FileSystemMy:

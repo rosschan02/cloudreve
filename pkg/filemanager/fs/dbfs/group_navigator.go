@@ -19,29 +19,44 @@ import (
 
 var groupNavigatorCapability = &boolset.BooleanSet{}
 
+// groupNavigatorRestrictedCapability is used for members who joined a group share area via
+// application: browse / download / upload / create folder only (no delete / rename / modify).
+var groupNavigatorRestrictedCapability = &boolset.BooleanSet{}
+
 // ErrGroupShareNotConfigured is returned when the group share area has no owner / root configured.
 var ErrGroupShareNotConfigured = serializer.NewError(serializer.CodeNotFound, "Group share area is not configured yet", nil)
 
-// NewGroupNavigator creates a navigator for the user group's shared file area.
-// All members of a group share a single root folder owned by the group's configured
-// "share root owner" (an administrator). Storage of uploaded files is charged to that owner.
-func NewGroupNavigator(u *ent.User, fileClient inventory.FileClient, userClient inventory.UserClient, l logging.Logger,
-	config *setting.DBFS, hasher hashid.Encoder) Navigator {
+// NewGroupNavigator creates a navigator for a user group's shared file area.
+// Members of a group share a single root folder owned by the group's configured
+// "share root owner". Storage of uploaded files is charged to that owner. A user may
+// access several group share areas (their primary group's, plus any they have joined),
+// distinguished by the group id carried in the URI: cloudreve://<gidHash>@group.
+func NewGroupNavigator(u *ent.User, fileClient inventory.FileClient, userClient inventory.UserClient,
+	groupClient inventory.GroupClient, l logging.Logger, config *setting.DBFS, hasher hashid.Encoder,
+	capability *boolset.BooleanSet) Navigator {
+	if capability == nil {
+		capability = groupNavigatorCapability
+	}
 	return &groupNavigator{
 		user:          u,
 		l:             l,
 		fileClient:    fileClient,
 		userClient:    userClient,
+		groupClient:   groupClient,
 		config:        config,
+		capability:    capability,
 		baseNavigator: newBaseNavigator(fileClient, defaultFilter, u, hasher, config),
 	}
 }
 
 type groupNavigator struct {
-	l          logging.Logger
-	user       *ent.User
-	fileClient inventory.FileClient
-	userClient inventory.UserClient
+	l           logging.Logger
+	user        *ent.User
+	fileClient  inventory.FileClient
+	userClient  inventory.UserClient
+	groupClient inventory.GroupClient
+	// capability is resolved per user role for the target group (full vs restricted).
+	capability *boolset.BooleanSet
 
 	config *setting.DBFS
 	*baseNavigator
@@ -84,23 +99,40 @@ func (n *groupNavigator) To(ctx context.Context, path *fs.URI) (*File, error) {
 			return nil, ErrLoginRequired
 		}
 
-		group := n.user.Edges.Group
-		if group == nil {
-			return nil, ErrPermissionDenied.WithError(fmt.Errorf("user group not loaded"))
+		// Resolve the target group: the id carried in the URI (cloudreve://<gidHash>@group),
+		// or the user's primary group when none is given.
+		targetGroupID := 0
+		if n.user.Edges.Group != nil {
+			targetGroupID = n.user.Edges.Group.ID
+		}
+		if rawID := path.ID(""); rawID != "" {
+			decoded, err := n.hasher.Decode(rawID, hashid.GroupID)
+			if err != nil {
+				return nil, fs.ErrPathNotExist.WithError(fmt.Errorf("invalid group id"))
+			}
+			targetGroupID = decoded
+		}
+		if targetGroupID == 0 {
+			return nil, ErrPermissionDenied.WithError(fmt.Errorf("no target group"))
 		}
 
-		// Access to the group share area is gated by a dedicated group permission.
-		if !group.Permissions.Enabled(int(types.GroupPermissionAccessGroupShare)) {
-			return nil, ErrPermissionDenied.WithError(fmt.Errorf("group share access not granted"))
+		ctx = context.WithValue(ctx, inventory.LoadUserGroup{}, true)
+		group, err := n.groupClient.GetByID(ctx, targetGroupID)
+		if err != nil {
+			return nil, ErrGroupShareNotConfigured.WithError(fmt.Errorf("group not found: %w", err))
+		}
+
+		// The group must actually offer a share area, and the user must be allowed in.
+		if !inventory.IsShareGroup(group) {
+			return nil, ErrGroupShareNotConfigured
+		}
+		if !inventory.CanAccessGroupShare(group, n.user) {
+			return nil, ErrPermissionDenied.WithError(fmt.Errorf("not a member of the group share"))
 		}
 
 		settings := group.Settings
-		if settings == nil || settings.ShareRootOwner == 0 || settings.ShareRootID == 0 {
-			return nil, ErrGroupShareNotConfigured
-		}
 
 		// Load the configured owner of the share root (storage quota is charged here).
-		ctx = context.WithValue(ctx, inventory.LoadUserGroup{}, true)
 		owner, err := n.userClient.GetByID(ctx, settings.ShareRootOwner)
 		if err != nil {
 			return nil, ErrGroupShareNotConfigured.WithError(fmt.Errorf("share root owner not found: %w", err))
@@ -123,7 +155,7 @@ func (n *groupNavigator) To(ctx context.Context, path *fs.URI) (*File, error) {
 		}
 
 		n.root = newFile(nil, rootFile)
-		rootPath := newGroupUri("")
+		rootPath := newGroupIDUri(hashid.EncodeGroupID(n.hasher, group.ID))
 		n.root.Path[pathIndexRoot], n.root.Path[pathIndexUser] = rootPath, rootPath
 		n.root.OwnerModel = owner
 		n.root.IsUserRoot = true
@@ -154,7 +186,7 @@ func (n *groupNavigator) walkNext(ctx context.Context, root *File, next string, 
 
 func (n *groupNavigator) Capabilities(isSearching bool) *fs.NavigatorProps {
 	res := &fs.NavigatorProps{
-		Capability:            groupNavigatorCapability,
+		Capability:            n.capability,
 		OrderDirectionOptions: fullOrderDirectionOption,
 		OrderByOptions:        fullOrderByOption,
 		MaxPageSize:           n.config.MaxPageSize,

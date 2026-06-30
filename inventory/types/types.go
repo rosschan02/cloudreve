@@ -41,6 +41,20 @@ type (
 		// ShareRootOwner is the User ID who owns the group shared root folder (and bears its storage quota).
 		// Explicitly assigned by an administrator. 0 means the share area has no owner configured.
 		ShareRootOwner int `json:"share_root_owner,omitempty"`
+		// ShareMembers holds user IDs that have been approved to access this group's share area
+		// from a *different* primary group (members whose primary group is this group access it
+		// implicitly and are not listed here).
+		ShareMembers []int `json:"share_members,omitempty"`
+		// ShareJoinRequests holds pending applications to join this group's share area,
+		// awaiting approval by the share root owner.
+		ShareJoinRequests []GroupJoinRequest `json:"share_join_requests,omitempty"`
+	}
+
+	// GroupJoinRequest is a single pending application to join a group's share area.
+	GroupJoinRequest struct {
+		UserID   int    `json:"user_id"`
+		RealName string `json:"real_name,omitempty"`
+		Reason   string `json:"reason,omitempty"`
 	}
 
 	// PolicySetting 非公有的存储策略属性
