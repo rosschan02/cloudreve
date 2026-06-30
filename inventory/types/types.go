@@ -36,6 +36,11 @@ type (
 		MaxWalkedFiles        int                    `json:"max_walked_files,omitempty"`
 		TrashRetention        int                    `json:"trash_retention,omitempty"`
 		RedirectedSource      bool                   `json:"redirected_source,omitempty"`
+		// ShareRootID is the File ID of the group's shared root folder. 0 means not initialized yet.
+		ShareRootID int `json:"share_root_id,omitempty"`
+		// ShareRootOwner is the User ID who owns the group shared root folder (and bears its storage quota).
+		// Explicitly assigned by an administrator. 0 means the share area has no owner configured.
+		ShareRootOwner int `json:"share_root_owner,omitempty"`
 	}
 
 	// PolicySetting 非公有的存储策略属性
@@ -197,6 +202,10 @@ type (
 
 	FileProps struct {
 		View *ExplorerView `json:"view,omitempty"`
+		// GroupShareRoot marks this (orphan) folder as the root of a user group's shared file area.
+		// Such roots are owned by the group's configured owner but must be hidden from that owner's
+		// trash listing (soft-deleted files are also orphans).
+		GroupShareRoot bool `json:"group_share_root,omitempty"`
 	}
 
 	ExplorerView struct {
@@ -261,6 +270,8 @@ const (
 	GroupPermissionSetExplicitUser_placeholder
 	GroupPermissionIgnoreFileOwnership // not used
 	GroupPermissionUniqueRedirectDirectLink
+	// GroupPermissionAccessGroupShare allows members of the group to access the group shared file area.
+	GroupPermissionAccessGroupShare
 )
 
 const (

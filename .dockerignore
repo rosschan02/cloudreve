@@ -1,0 +1,19 @@
+# Keep the build context small and reproducible (clean installs happen in-image).
+.git
+.github
+**/.git
+
+# Frontend build artifacts & deps (rebuilt inside the frontend stage)
+assets/node_modules
+assets/build
+assets/.cache
+
+# Locally built backend artifacts / embedded bundle (regenerated in-image)
+/cloudreve
+cloudreve.exe
+application/statics/assets.zip
+
+# Runtime data & misc
+data
+*.db
+*.log

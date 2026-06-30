@@ -737,6 +737,8 @@ func (f *DBFS) getNavigator(ctx context.Context, path *fs.URI, requiredCapabilit
 			n = NewTrashNavigator(f.user, f.fileClient, f.l, config, f.hasher)
 		case constants.FileSystemSharedWithMe:
 			n = NewSharedWithMeNavigator(f.user, f.fileClient, f.l, config, f.hasher)
+		case constants.FileSystemGroup:
+			n = NewGroupNavigator(f.user, f.fileClient, f.userClient, f.l, config, f.hasher)
 		default:
 			return nil, fmt.Errorf("unknown file system %q", pathFs)
 		}
@@ -780,6 +782,13 @@ func (f *DBFS) navigatorId(path *fs.URI) string {
 		return fmt.Sprintf("%s/%s/%d", constants.FileSystemShare, path.ID(uidHashed), f.user.ID)
 	case constants.FileSystemTrash:
 		return fmt.Sprintf("%s/%s", constants.FileSystemTrash, path.ID(uidHashed))
+	case constants.FileSystemGroup:
+		// Shared per group: key by group ID so all members of a group reuse the same navigator.
+		gid := 0
+		if f.user.Edges.Group != nil {
+			gid = f.user.Edges.Group.ID
+		}
+		return fmt.Sprintf("%s/g%d", constants.FileSystemGroup, gid)
 	default:
 		return fmt.Sprintf("%s/%s/%d", path.FileSystem(), path.ID(uidHashed), f.user.ID)
 	}
@@ -804,14 +813,18 @@ func generateSavePath(policy *ent.StoragePolicy, req *fs.UploadRequest, user *en
 
 func canMoveOrCopyTo(src, dst *fs.URI, isCopy bool) bool {
 	if isCopy {
-		return src.FileSystem() == dst.FileSystem() && src.FileSystem() == constants.FileSystemMy
+		// Copy is allowed within "my" fs, or within the group share area.
+		return src.FileSystem() == dst.FileSystem() &&
+			(src.FileSystem() == constants.FileSystemMy || src.FileSystem() == constants.FileSystemGroup)
 	} else {
 		switch src.FileSystem() {
 		case constants.FileSystemMy:
 			return dst.FileSystem() == constants.FileSystemMy || dst.FileSystem() == constants.FileSystemTrash
 		case constants.FileSystemTrash:
 			return dst.FileSystem() == constants.FileSystemMy
-
+		case constants.FileSystemGroup:
+			// Move only within the group share area (cross-fs move would change ownership / quota).
+			return dst.FileSystem() == constants.FileSystemGroup
 		}
 	}
 
@@ -836,4 +849,20 @@ func allAncestors(targets []*File) []*ent.File {
 
 func WithBypassOwnerCheck(ctx context.Context) context.Context {
 	return context.WithValue(ctx, ByPassOwnerCheckCtxKey{}, true)
+}
+
+// groupShareWritable reports whether the given file lives in a group share filesystem.
+// Files there are owned by the group's configured share-root owner, but any group member
+// whose access has already been validated by the group navigator may operate on them.
+// Therefore the per-file owner check is bypassed for such files.
+func groupShareWritable(target *File) bool {
+	if target == nil {
+		return false
+	}
+	userRoot := target.UserRoot()
+	if userRoot == nil {
+		return false
+	}
+	rootUri := userRoot.Uri(true)
+	return rootUri != nil && rootUri.FileSystem() == constants.FileSystemGroup
 }

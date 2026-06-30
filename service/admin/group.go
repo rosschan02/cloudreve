@@ -2,15 +2,23 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/cloudreve/Cloudreve/v4/application/dependency"
 	"github.com/cloudreve/Cloudreve/v4/ent"
+	"github.com/cloudreve/Cloudreve/v4/ent/user"
 	"github.com/cloudreve/Cloudreve/v4/inventory"
 	"github.com/cloudreve/Cloudreve/v4/inventory/types"
+	"github.com/cloudreve/Cloudreve/v4/pkg/hashid"
 	"github.com/cloudreve/Cloudreve/v4/pkg/serializer"
 	"github.com/gin-gonic/gin"
 )
+
+// groupShareRootName returns the (orphan folder) name used for a group's shared file area root.
+func groupShareRootName(groupID int) string {
+	return fmt.Sprintf("__group_share_%d__", groupID)
+}
 
 // AddGroupService 用户组添加服务
 type AddGroupService struct {
@@ -148,6 +156,9 @@ func (s *SingleGroupService) Get(c *gin.Context) (*GetGroupResponse, error) {
 type (
 	UpsertGroupService struct {
 		Group *ent.Group `json:"group" binding:"required"`
+		// ShareRootOwnerHash is the hashid of the user to set as the group share root owner.
+		// nil = leave unchanged; "" = clear; otherwise decoded into Group.Settings.ShareRootOwner.
+		ShareRootOwnerHash *string `json:"share_root_owner_hash,omitempty"`
 	}
 	UpsertGroupParamCtx struct{}
 )
@@ -165,9 +176,105 @@ func (s *UpsertGroupService) Update(c *gin.Context) (*GetGroupResponse, error) {
 		return nil, serializer.NewError(serializer.CodeParamErr, "Initial admin group have to be admin", nil)
 	}
 
-	group, err := groupClient.Upsert(c, s.Group)
+	if s.Group.Settings == nil {
+		s.Group.Settings = &types.GroupSetting{}
+	}
+
+	// Resolve the desired share root owner from its hashid (the frontend only knows hashids).
+	if s.ShareRootOwnerHash != nil {
+		if *s.ShareRootOwnerHash == "" {
+			s.Group.Settings.ShareRootOwner = 0
+		} else {
+			ownerID, err := dep.HashIDEncoder().Decode(*s.ShareRootOwnerHash, hashid.UserID)
+			if err != nil {
+				return nil, serializer.NewError(serializer.CodeParamErr, "Invalid share root owner", err)
+			}
+			s.Group.Settings.ShareRootOwner = ownerID
+		}
+	}
+
+	// Load existing group to learn the current share-root state, which is managed internally
+	// and must not be clobbered by the incoming payload.
+	existing, err := groupClient.GetByID(c, s.Group.ID)
 	if err != nil {
+		return nil, serializer.NewError(serializer.CodeDBError, "Failed to get group", err)
+	}
+	var oldRootID, oldRootOwner int
+	if existing.Settings != nil {
+		oldRootID, oldRootOwner = existing.Settings.ShareRootID, existing.Settings.ShareRootOwner
+	}
+
+	desiredOwner := s.Group.Settings.ShareRootOwner
+	// The share root ID is internal; always carry the existing one forward.
+	s.Group.Settings.ShareRootID = oldRootID
+
+	// Validate the desired owner up-front (read-only checks before opening a transaction).
+	if desiredOwner > 0 {
+		owner, err := dep.UserClient().GetByID(c, desiredOwner)
+		if err != nil {
+			return nil, serializer.NewError(serializer.CodeParamErr, "Share root owner not found", err)
+		}
+		if owner.Status != user.StatusActive {
+			return nil, serializer.NewError(serializer.CodeParamErr, "Share root owner is not active", nil)
+		}
+	}
+
+	// Reconcile the group share root (create / migrate owner) and persist the group atomically.
+	fc, tx, ctx, err := inventory.WithTx(c, dep.FileClient())
+	if err != nil {
+		return nil, serializer.NewError(serializer.CodeDBError, "Failed to start transaction", err)
+	}
+
+	if desiredOwner > 0 {
+		if s.Group.Settings.ShareRootID == 0 {
+			// First time: create the shared root folder owned by the configured owner.
+			root, err := fc.CreateFolder(ctx, nil, &inventory.CreateFolderParameters{
+				Owner: desiredOwner,
+				Name:  groupShareRootName(s.Group.ID),
+			})
+			if err != nil {
+				_ = inventory.Rollback(tx)
+				return nil, serializer.NewError(serializer.CodeDBError, "Failed to create group share root", err)
+			}
+
+			// Mark the orphan root so it stays hidden from the owner's trash listing.
+			if _, err := fc.UpdateProps(ctx, root, &types.FileProps{GroupShareRoot: true}); err != nil {
+				_ = inventory.Rollback(tx)
+				return nil, serializer.NewError(serializer.CodeDBError, "Failed to mark group share root", err)
+			}
+
+			s.Group.Settings.ShareRootID = root.ID
+		} else if oldRootOwner != desiredOwner {
+			// Owner changed: migrate the whole subtree's ownership and move its storage usage.
+			root, err := fc.GetByID(ctx, s.Group.Settings.ShareRootID)
+			if err != nil {
+				_ = inventory.Rollback(tx)
+				return nil, serializer.NewError(serializer.CodeDBError, "Failed to load group share root", err)
+			}
+
+			from := oldRootOwner
+			if from == 0 {
+				from = root.OwnerID
+			}
+			diff, err := fc.TransferDescendantsOwner(ctx, root, from, desiredOwner)
+			if err != nil {
+				_ = inventory.Rollback(tx)
+				return nil, serializer.NewError(serializer.CodeDBError, "Failed to transfer group share ownership", err)
+			}
+			tx.AppendStorageDiff(diff)
+		}
+	}
+	s.Group.Settings.ShareRootOwner = desiredOwner
+
+	txGroupClient, _ := inventory.InheritTx(ctx, groupClient)
+	group, err := txGroupClient.Upsert(ctx, s.Group)
+	if err != nil {
+		_ = inventory.Rollback(tx)
 		return nil, serializer.NewError(serializer.CodeDBError, "Failed to update group", err)
+	}
+
+	if err := inventory.CommitWithStorageDiff(ctx, tx, dep.Logger(), dep.UserClient()); err != nil {
+		return nil, serializer.NewError(serializer.CodeDBError, "Failed to commit group update", err)
 	}
 
 	service := &SingleGroupService{ID: group.ID}

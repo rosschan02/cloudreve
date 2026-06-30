@@ -57,7 +57,7 @@ func (f *DBFS) Create(ctx context.Context, path *fs.URI, fileType types.FileType
 			WithError(fmt.Errorf("object with the same name but different type %q already exist", ancestor.Type()))
 	}
 
-	if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && ancestor.Owner().ID != f.user.ID {
+	if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && ancestor.Owner().ID != f.user.ID && !groupShareWritable(ancestor) {
 		return nil, fs.ErrOwnerOnly
 	}
 
@@ -162,7 +162,7 @@ func (f *DBFS) Rename(ctx context.Context, path *fs.URI, newName string) (fs.Fil
 	}
 	oldName := target.Name()
 
-	if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && target.Owner().ID != f.user.ID {
+	if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && target.Owner().ID != f.user.ID && !groupShareWritable(target) {
 		return nil, nil, fs.ErrOwnerOnly
 	}
 
@@ -265,7 +265,7 @@ func (f *DBFS) SoftDelete(ctx context.Context, path ...*fs.URI) error {
 			continue
 		}
 
-		if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && target.Owner().ID != f.user.ID {
+		if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && target.Owner().ID != f.user.ID && !groupShareWritable(target) {
 			ae.Add(p.String(), fs.ErrOwnerOnly.WithError(fmt.Errorf("only file owner can delete file without trash bin")))
 			continue
 		}
@@ -359,7 +359,7 @@ func (f *DBFS) Delete(ctx context.Context, path []*fs.URI, opts ...fs.Option) ([
 			continue
 		}
 
-		if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !o.SysSkipSoftDelete && !ok && target.Owner().ID != f.user.ID {
+		if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !o.SysSkipSoftDelete && !ok && target.Owner().ID != f.user.ID && !groupShareWritable(target) {
 			ae.Add(p.String(), fs.ErrOwnerOnly)
 			continue
 		}
@@ -429,7 +429,7 @@ func (f *DBFS) VersionControl(ctx context.Context, path *fs.URI, versionId int, 
 		return nil, fmt.Errorf("failed to get target file: %w", err)
 	}
 
-	if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && target.Owner().ID != f.user.ID {
+	if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && target.Owner().ID != f.user.ID && !groupShareWritable(target) {
 		return nil, fs.ErrOwnerOnly
 	}
 
@@ -546,7 +546,7 @@ func (f *DBFS) MoveOrCopy(ctx context.Context, path []*fs.URI, dst *fs.URI, isCo
 		return nil, fmt.Errorf("faield to get destination folder: %w", err)
 	}
 
-	if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && destination.Owner().ID != f.user.ID {
+	if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && destination.Owner().ID != f.user.ID && !groupShareWritable(destination) {
 		return nil, fs.ErrOwnerOnly
 	}
 
@@ -582,7 +582,7 @@ func (f *DBFS) MoveOrCopy(ctx context.Context, path []*fs.URI, dst *fs.URI, isCo
 			continue
 		}
 
-		if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && target.Owner().ID != f.user.ID {
+		if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && target.Owner().ID != f.user.ID && !groupShareWritable(target) {
 			ae.Add(p.String(), fs.ErrOwnerOnly)
 			continue
 		}

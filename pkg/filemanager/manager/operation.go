@@ -308,7 +308,8 @@ func (m *manager) TraverseFile(ctx context.Context, fileID int) (fs.File, error)
 }
 
 func (m *manager) PatchView(ctx context.Context, uri *fs.URI, view *types.ExplorerView) error {
-	if uri.PathTrimmed() == "" && uri.FileSystem() != constants.FileSystemMy && uri.FileSystem() != constants.FileSystemShare {
+	if uri.PathTrimmed() == "" && uri.FileSystem() != constants.FileSystemMy && uri.FileSystem() != constants.FileSystemShare &&
+		uri.FileSystem() != constants.FileSystemGroup {
 		if m.user.Settings.FsViewMap == nil {
 			m.user.Settings.FsViewMap = make(map[string]types.ExplorerView)
 		}

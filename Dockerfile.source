@@ -1,0 +1,88 @@
+# Multi-stage build from source, including the (modified) frontend and backend.
+# Build with:  docker compose build   (or: docker build -f Dockerfile.source -t cloudreve-custom .)
+#
+# Unlike the official Dockerfile (which copies a pre-built `cloudreve` binary and
+# pulls the released image), this builds everything inside the container so your
+# local code changes — both backend (Go) and frontend (assets/) — are included.
+
+# ---- Stage 1: build the frontend into application/statics/assets.zip ----
+FROM node:20-bookworm AS frontend
+WORKDIR /src
+
+# Keep the embedded frontend's version aligned with the backend (avoids the
+# "Static resource version mismatch" warning at startup).
+ARG VERSION=4.14.0-custom
+
+# The frontend bundle is large (monaco/excalidraw/mermaid); give Node a big heap
+# like .build/build-assets.sh does, otherwise `yarn run build` OOMs.
+ENV NODE_OPTIONS=--max-old-space-size=4096
+
+# zip is needed to package the built frontend the same way .build/build-assets.sh does.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends zip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install JS dependencies first for better layer caching.
+COPY assets/package.json assets/yarn.lock ./assets/
+RUN cd assets && yarn install --frozen-lockfile --network-timeout 1000000
+
+# Build the frontend and package it exactly like .build/build-assets.sh:
+#   the zip must contain entries under "assets/build/..." because the backend
+#   reads them via fs.Sub(statics, "assets/build") (application/statics/statics.go).
+COPY assets/ ./assets/
+RUN cd assets && npm pkg set version="${VERSION}" && yarn run build
+RUN zip -r -q assets.zip assets/build
+
+# ---- Stage 2: build the backend binary with the embedded frontend ----
+FROM golang:1.25-bookworm AS backend
+WORKDIR /src
+
+# Version metadata injected into the binary (mirrors .goreleaser.yaml ldflags).
+ARG VERSION=4.14.0-custom
+ARG COMMIT=source
+
+# Download Go modules first for better layer caching.
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the rest of the source, then drop in the freshly built frontend bundle so
+# the //go:embed assets.zip directive picks it up at compile time.
+COPY . .
+COPY --from=frontend /src/assets.zip ./application/statics/assets.zip
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -trimpath \
+    -ldflags "-s -w \
+        -X 'github.com/cloudreve/Cloudreve/v4/application/constants.BackendVersion=${VERSION}' \
+        -X 'github.com/cloudreve/Cloudreve/v4/application/constants.LastCommit=${COMMIT}'" \
+    -o cloudreve .
+
+# ---- Stage 3: runtime image (mirrors the official Dockerfile) ----
+FROM alpine:latest
+WORKDIR /cloudreve
+
+RUN apk update \
+    && apk add --no-cache tzdata vips-tools ffmpeg libreoffice aria2 supervisor font-noto font-noto-cjk libheif libraw-tools \
+    && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
+    && mkdir -p ./data/temp/aria2 \
+    && chmod -R 766 ./data/temp/aria2
+
+ENV CR_ENABLE_ARIA2=1 \
+    CR_SETTING_DEFAULT_thumb_ffmpeg_enabled=1 \
+    CR_SETTING_DEFAULT_thumb_vips_enabled=1 \
+    CR_SETTING_DEFAULT_thumb_libreoffice_enabled=1 \
+    CR_SETTING_DEFAULT_media_meta_ffprobe=1 \
+    CR_SETTING_DEFAULT_thumb_libraw_enabled=1
+
+COPY .build/aria2.supervisor.conf .build/entrypoint.sh ./
+COPY --from=backend /src/cloudreve ./cloudreve
+
+RUN chmod +x ./cloudreve \
+    && chmod +x ./entrypoint.sh
+
+EXPOSE 5212 443 6888 6888/udp
+
+VOLUME ["/cloudreve/data"]
+
+ENTRYPOINT ["sh", "./entrypoint.sh"]

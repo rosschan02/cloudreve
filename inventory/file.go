@@ -203,6 +203,11 @@ type FileClient interface {
 	QueryMetadata(ctx context.Context, root *ent.File) error
 	// SoftDelete soft-deletes a file, also renaming it to a random name
 	SoftDelete(ctx context.Context, file *ent.File) error
+	// TransferDescendantsOwner reassigns ownership of the given root folder and all of its
+	// descendants currently owned by fromOwner to toOwner. It returns a StorageDiff that moves
+	// the corresponding storage usage from fromOwner to toOwner (negative for fromOwner, positive
+	// for toOwner), computed the same way uploads/copies account storage (sum of linked entity sizes).
+	TransferDescendantsOwner(ctx context.Context, root *ent.File, fromOwner, toOwner int) (StorageDiff, error)
 	// SetPrimaryEntity sets primary entity of a file
 	SetPrimaryEntity(ctx context.Context, file *ent.File, entity *ent.Entity) error
 	// UnlinkEntity unlinks an entity from a file
@@ -418,6 +423,67 @@ func (f *fileClient) SoftDelete(ctx context.Context, file *ent.File) error {
 	}
 
 	return err
+}
+
+func (f *fileClient) TransferDescendantsOwner(ctx context.Context, root *ent.File, fromOwner, toOwner int) (StorageDiff, error) {
+	diff := make(StorageDiff)
+	if root == nil || fromOwner == toOwner {
+		return diff, nil
+	}
+
+	var movedSize int64
+	// Walk the subtree breadth-first, starting from the root folder itself.
+	frontier := []int{root.ID}
+	for len(frontier) > 0 {
+		predicates, _ := f.batchInCondition(intsets.MaxInt, 10, 1, frontier)
+
+		// Reassign ownership of files in this level that still belong to fromOwner, accumulating
+		// the storage they account for (sum of their linked entity sizes, mirroring upload/copy).
+		for _, p := range predicates {
+			owned, err := f.client.File.Query().
+				Where(file.And(p, file.OwnerIDEQ(fromOwner))).
+				WithEntities().
+				All(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to query subtree files: %w", err)
+			}
+
+			ownedIDs := make([]int, 0, len(owned))
+			for _, fi := range owned {
+				ownedIDs = append(ownedIDs, fi.ID)
+				for _, e := range fi.Edges.Entities {
+					movedSize += e.Size
+				}
+			}
+
+			if len(ownedIDs) > 0 {
+				if err := f.client.File.Update().
+					Where(file.IDIn(ownedIDs...)).
+					SetOwnerID(toOwner).
+					Exec(ctx); err != nil {
+					return nil, fmt.Errorf("failed to reassign file ownership: %w", err)
+				}
+			}
+		}
+
+		// Advance to the next level: children of all files in the current frontier.
+		next := make([]int, 0)
+		for _, p := range predicates {
+			childIDs, err := f.client.File.Query().
+				Where(file.HasParentWith(p)).
+				Select(file.FieldID).
+				Ints(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to query subtree children: %w", err)
+			}
+			next = append(next, childIDs...)
+		}
+		frontier = next
+	}
+
+	diff[fromOwner] -= movedSize
+	diff[toOwner] += movedSize
+	return diff, nil
 }
 
 func (f *fileClient) RemoveEntitiesByID(ctx context.Context, ids ...int) (map[int]int64, error) {

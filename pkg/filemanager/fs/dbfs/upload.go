@@ -33,7 +33,7 @@ func (f *DBFS) PreValidateUpload(ctx context.Context, dst *fs.URI, files ...fs.P
 	}
 
 	// check ownership
-	if f.user.ID != dstFile.OwnerID() {
+	if f.user.ID != dstFile.OwnerID() && !groupShareWritable(dstFile) {
 		return fmt.Errorf("failed to evaluate permission: %w", err)
 	}
 
@@ -102,7 +102,7 @@ func (f *DBFS) PrepareUpload(ctx context.Context, req *fs.UploadRequest, opts ..
 		return nil, fs.ErrPathNotExist
 	}
 
-	if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && ancestor.OwnerID() != f.user.ID {
+	if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && ancestor.OwnerID() != f.user.ID && !groupShareWritable(ancestor) {
 		return nil, fs.ErrOwnerOnly
 	}
 
@@ -392,7 +392,7 @@ func (f *DBFS) CancelUploadSession(ctx context.Context, path *fs.URI, sessionID 
 		}
 	}
 
-	if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && filePrivate.OwnerID() != f.user.ID {
+	if _, ok := ctx.Value(ByPassOwnerCheckCtxKey{}).(bool); !ok && filePrivate.OwnerID() != f.user.ID && !groupShareWritable(filePrivate) {
 		return nil, nil, fs.ErrOwnerOnly
 	}
 

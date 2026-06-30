@@ -14,6 +14,7 @@ import (
 	"github.com/cloudreve/Cloudreve/v4/pkg/hashid"
 	"github.com/cloudreve/Cloudreve/v4/pkg/logging"
 	"github.com/cloudreve/Cloudreve/v4/pkg/setting"
+	"github.com/samber/lo"
 )
 
 var (
@@ -106,6 +107,12 @@ func (t *trashNavigator) Children(ctx context.Context, parent *File, args *ListA
 	if err != nil {
 		return nil, err
 	}
+
+	// Hide group share roots: they are orphan folders (like soft-deleted files) owned by the
+	// group's configured owner, but they are not actually trashed.
+	res.Files = lo.Filter(res.Files, func(f *File, _ int) bool {
+		return f.Model.Props == nil || !f.Model.Props.GroupShareRoot
+	})
 
 	// Adding user uri for each file.
 	for i := 0; i < len(res.Files); i++ {

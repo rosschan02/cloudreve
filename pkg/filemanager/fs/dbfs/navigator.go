@@ -147,6 +147,23 @@ func init() {
 		NavigatorCapabilityDownloadFile: true,
 		NavigatorCapabilityEnterFolder:  true,
 	}, sharedWithMeNavigatorCapability)
+	// Group share area: members can read / write / delete (soft delete into owner's trash).
+	// Sharing and version control are intentionally not exposed to avoid acting on behalf of the owner.
+	boolset.Sets(map[NavigatorCapability]bool{
+		NavigatorCapabilityCreateFile:     true,
+		NavigatorCapabilityRenameFile:     true,
+		NavigatorCapabilityUploadFile:     true,
+		NavigatorCapabilityDownloadFile:   true,
+		NavigatorCapabilityUpdateMetadata: true,
+		NavigatorCapabilityListChildren:   true,
+		NavigatorCapabilityGenerateThumb:  true,
+		NavigatorCapabilityDeleteFile:     true,
+		NavigatorCapabilityLockFile:       true,
+		NavigatorCapabilitySoftDelete:     true,
+		NavigatorCapabilityInfo:           true,
+		NavigatorCapabilityEnterFolder:    true,
+		NavigatorCapabilityModifyProps:    true,
+	}, groupNavigatorCapability)
 }
 
 // ==================== Base Navigator ====================
@@ -557,4 +574,9 @@ func newTrashUri(name string) *fs.URI {
 func newSharedWithMeUri(id string) *fs.URI {
 	res, _ := fs.NewUriFromString(fmt.Sprintf("%s://%s", constants.CloudreveScheme, constants.FileSystemSharedWithMe))
 	return res.Join(id)
+}
+
+func newGroupUri(name string) *fs.URI {
+	res, _ := fs.NewUriFromString(constants.CloudreveScheme + "://" + string(constants.FileSystemGroup))
+	return res.Join(name)
 }

@@ -37,3 +37,9 @@ tmp/
 .devcontainer/
 cloudreve
 .DS_Store
+
+# Vendored frontend build artifacts & deps (frontend source is committed; these are not)
+assets/node_modules/
+assets/build/
+assets/dist/
+assets/dev-dist/

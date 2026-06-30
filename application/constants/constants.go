@@ -30,5 +30,6 @@ const (
 	FileSystemShare        = FileSystemType("share")
 	FileSystemTrash        = FileSystemType("trash")
 	FileSystemSharedWithMe = FileSystemType("shared_with_me")
+	FileSystemGroup        = FileSystemType("group")
 	FileSystemUnknown      = FileSystemType("unknown")
 )
