@@ -38,6 +38,12 @@ tmp/
 cloudreve
 .DS_Store
 
+# Custom Collabora fonts: keep the mechanism (dir + README), ignore the font binaries
+# (they may be commercially licensed). Use `git add -f fonts/<file>` to commit a font
+# you have the right to redistribute.
+fonts/*
+!fonts/README.md
+
 # Vendored frontend build artifacts & deps (frontend source is committed; these are not)
 assets/node_modules/
 assets/build/

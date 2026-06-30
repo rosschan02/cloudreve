@@ -12,5 +12,10 @@ RUN apt-get update \
     && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
+# Custom fonts: drop your own .ttf/.ttc/.otf files into the repo's ./fonts directory.
+# They are copied in and registered here. (README.md in that dir is harmless to fontconfig.)
+COPY fonts/ /usr/share/fonts/custom/
+RUN chmod -R a+r /usr/share/fonts/custom && fc-cache -f
+
 # Drop back to the unprivileged user Collabora runs as.
 USER 1001
