@@ -1,0 +1,16 @@
+# Collabora Online with Chinese (CJK) fonts.
+# The stock collabora/code image ships no CJK fonts, so Chinese text renders as
+# tofu boxes. Install open-source CJK fonts and refresh the font cache.
+FROM collabora/code:latest
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        fonts-noto-cjk \
+        fonts-wqy-zenhei \
+        fonts-wqy-microhei \
+    && fc-cache -f \
+    && rm -rf /var/lib/apt/lists/*
+
+# Drop back to the unprivileged user Collabora runs as.
+USER 1001
