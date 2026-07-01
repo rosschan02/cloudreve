@@ -1,0 +1,18 @@
+# OnlyOffice Document Server (WOPI mode) with CJK + custom fonts.
+# Renders .docx/.xlsx/.pptx closer to MS Office than Collabora.
+FROM onlyoffice/documentserver:latest
+
+# Custom fonts: drop your own .ttf/.ttc/.otf into the repo's ./fonts directory.
+COPY fonts/ /usr/share/fonts/truetype/custom/
+
+# Install open-source CJK fonts, refresh caches, and regenerate OnlyOffice's font
+# list so the new fonts are usable by the converter/editor.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        fonts-noto-cjk \
+        fonts-wqy-zenhei \
+        fonts-wqy-microhei \
+    && rm -rf /var/lib/apt/lists/* \
+    && chmod -R a+r /usr/share/fonts/truetype/custom \
+    && fc-cache -f \
+    && ( documentserver-generate-allfonts.sh || echo "generate-allfonts will be run at container start instead" )
