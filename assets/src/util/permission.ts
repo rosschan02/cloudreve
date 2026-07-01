@@ -6,13 +6,20 @@ export function canCopyMoveTo(files: FileResponse[], dst: string, isCopy: boolea
   const dstUri = new CrUri(dst);
   const srcUri = new CrUri(files[0].path);
   if (isCopy) {
-    return srcUri.fs() == dstUri.fs() && srcUri.fs() == Filesystem.my;
+    // Copy is allowed freely between "my" files and the group share area (either
+    // direction), so users can grab a copy of a group template into their own space.
+    // Mirrors the backend canMoveOrCopyTo.
+    const inMyOrGroup = (fs: string) => fs == Filesystem.my || fs == Filesystem.group;
+    return inMyOrGroup(srcUri.fs()) && inMyOrGroup(dstUri.fs());
   } else {
     switch (srcUri.fs()) {
       case Filesystem.my:
         return dstUri.fs() == Filesystem.my || dstUri.fs() == Filesystem.trash;
       case Filesystem.trash:
         return dstUri.fs() == Filesystem.my;
+      case Filesystem.group:
+        // Move only within the group share area (cross-fs move would change ownership).
+        return dstUri.fs() == Filesystem.group;
     }
   }
 
