@@ -1,0 +1,101 @@
+services:
+  cloudreve:
+    # Build from source so local backend + frontend changes are included.
+    # (Use the official prebuilt image instead by commenting out `build` and
+    #  uncommenting the `image: cloudreve/cloudreve:latest` line.)
+    build:
+      context: .
+      dockerfile: Dockerfile.source
+      args:
+        # Keep frontend & backend version strings in sync; override if you like.
+        VERSION: 4.14.0-custom
+        COMMIT: source
+    image: cloudreve-custom:latest
+    # image: cloudreve/cloudreve:latest
+    container_name: cloudreve-backend
+    depends_on:
+      - postgresql
+      - redis
+    restart: unless-stopped
+    ports:
+      - 5212:5212
+      - 6888:6888
+      - 6888:6888/udp
+    environment:
+      - CR_CONF_Database.Type=postgres
+      - CR_CONF_Database.Host=postgresql
+      - CR_CONF_Database.User=${DB_USER}
+      - CR_CONF_Database.Password=${DB_PASSWORD}
+      - CR_CONF_Database.Name=${DB_NAME}
+      - CR_CONF_Database.Port=5432
+      - CR_CONF_Redis.Server=redis:6379
+    volumes:
+      - backend_data:/cloudreve/data
+
+  postgresql:
+    # Best practice: Pin to major version. 
+    # NOTE: For major version jumps:
+    # backup & consult https://www.postgresql.org/docs/current/pgupgrade.html 
+    image: postgres:17
+    container_name: postgresql
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - database_postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+  # Collabora Online (WOPI client) for viewing/editing Office documents.
+  # HOST_IP comes from the .env file (see .env.example) — set it to this host's
+  # reachable IP/domain so both the browser and Collabora can reach Cloudreve.
+  # IMPORTANT: Cloudreve's Site URL (in admin / DB) must equal http://${HOST_IP}:5212.
+  # ssl disabled for local HTTP testing; for production run behind an HTTPS reverse proxy.
+  collabora:
+    # Custom image = collabora/code + Chinese (CJK) fonts (see Dockerfile.collabora).
+    build:
+      context: .
+      dockerfile: Dockerfile.collabora
+    image: collabora-cjk:latest
+    container_name: collabora
+    restart: unless-stopped
+    ports:
+      - "9980:9980"
+    environment:
+      - "aliasgroup1=http://${HOST_IP}:5212"
+      - "server_name=${HOST_IP}:9980"
+      - "username=admin"
+      - "password=${COLLABORA_PASSWORD}"
+      - "extra_params=--o:ssl.enable=false --o:ssl.termination=false"
+    cap_add:
+      - MKNOD
+
+  # OnlyOffice Document Server (WOPI client) — alternative to Collabora, closer MS Office
+  # rendering. Custom image adds CJK + ./fonts fonts (see Dockerfile.onlyoffice).
+  # In Cloudreve admin add a 2nd WOPI app with discovery:
+  #   http://${HOST_IP}:8080/hosting/discovery
+  # JWT disabled for local HTTP testing; enable + set a secret for production.
+  onlyoffice:
+    build:
+      context: .
+      dockerfile: Dockerfile.onlyoffice
+    image: onlyoffice-cjk:latest
+    container_name: onlyoffice
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      - WOPI_ENABLED=true
+      - JWT_ENABLED=false
+
+volumes:
+  backend_data:
+  database_postgres:
+  redis_data:
