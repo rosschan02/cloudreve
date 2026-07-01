@@ -90,7 +90,11 @@ const EmailLogin = ({ oauthConsent }: SignInProps) => {
   // Get OAuth app from Redux
   const app = useAppSelector((state) => state.globalState.oauthApp);
 
-  const [phase, setPhase] = useState<EmailLoginPhase>(EmailLoginPhase.CollectEmail);
+  // When phone-number login is enabled, use it as the default entry phase.
+  const smsLoginEnabled = useAppSelector((state) => state.siteConfig.login.config.sms_login);
+  const [phase, setPhase] = useState<EmailLoginPhase>(
+    smsLoginEnabled ? EmailLoginPhase.SMSLogin : EmailLoginPhase.CollectEmail,
+  );
   const [email, setEmail] = useState("");
   const [pwd, setPwd] = useState("");
   const [otp, setOTP] = useState("");
