@@ -73,10 +73,20 @@ func (c *settingClient) Gets(ctx context.Context, names []string) (map[string]st
 
 func (c *settingClient) Set(ctx context.Context, settings map[string]string) error {
 	for k, v := range settings {
-		if err := c.client.Setting.Update().Where(setting.Name(k)).SetValue(v).Exec(ctx); err != nil {
-			return fmt.Errorf("failed to create setting %q: %w", k, err)
+		// Update the existing row; Save reports how many rows were affected.
+		affected, err := c.client.Setting.Update().Where(setting.Name(k)).SetValue(v).Save(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to update setting %q: %w", k, err)
 		}
 
+		// The setting was never seeded into this database (e.g. a key added after
+		// the initial install). A bare UPDATE matches no rows and would silently
+		// discard the value, so create the row instead.
+		if affected == 0 {
+			if err := c.client.Setting.Create().SetName(k).SetValue(v).Exec(ctx); err != nil {
+				return fmt.Errorf("failed to create setting %q: %w", k, err)
+			}
+		}
 	}
 
 	return nil
