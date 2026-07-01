@@ -93,6 +93,31 @@ func UserLoginValidation(c *gin.Context) {
 	c.Abort()
 }
 
+// UserSendSMSCode sends a phone verification code for login/registration
+func UserSendSMSCode(c *gin.Context) {
+	service := ParametersFromContext[*user.SendSMSCodeService](c, user.SendSMSCodeParameterCtx{})
+	if err := service.Send(c); err != nil {
+		c.JSON(200, serializer.Err(c, err))
+		c.Abort()
+		return
+	}
+	c.JSON(200, serializer.Response{})
+}
+
+// UserSMSLoginValidation validates a phone + verification code login request
+func UserSMSLoginValidation(c *gin.Context) {
+	service := ParametersFromContext[*user.SMSLoginService](c, user.SMSLoginParameterCtx{})
+	expectedUser, err := service.Login(c)
+	if err != nil {
+		c.JSON(200, serializer.Err(c, err))
+		c.Abort()
+		return
+	}
+
+	util.WithValue(c, inventory.UserCtx{}, expectedUser)
+	c.Next()
+}
+
 // UserLogin2FAValidation validates user OTP code
 func UserLogin2FAValidation(c *gin.Context) {
 	service := ParametersFromContext[*user.OtpValidationService](c, user.OtpValidationParameterCtx{})

@@ -498,6 +498,15 @@ var DefaultSettings = map[string]string{
 	"pwa_background_color":                       "#ffffff",
 	"register_enabled":                           `1`,
 	"default_group":                              `2`,
+	"sms_login_enabled":                          `0`,
+	"sms_secret_name":                            ``,
+	"sms_secret_key":                             ``,
+	"sms_sign_name":                              ``,
+	"sms_endpoint":                               `https://api.028lk.com/Sms/Api/Send`,
+	"sms_template":                               `您的验证码是 {code}，5分钟内有效，请勿泄露。`,
+	"sms_code_ttl":                               `300`,
+	"sms_send_interval":                          `60`,
+	"sms_auto_register":                          `1`,
 	"fromName":                                   `Cloudreve`,
 	"mail_keepalive":                             `30`,
 	"fromAdress":                                 `no-reply@cloudreve.org`,
@@ -691,6 +700,7 @@ var DefaultSettings = map[string]string{
 var RedactedSettings = map[string]struct{}{
 	"encrypt_master_key": {},
 	"secret_key":         {},
+	"sms_secret_key":     {},
 }
 
 func init() {

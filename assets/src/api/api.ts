@@ -95,7 +95,9 @@ import {
   RefreshTokenRequest,
   ResetPasswordService,
   SendResetEmailService,
+  SendSMSCodeRequest,
   SignUpService,
+  SMSLoginRequest,
   Token,
   TwoFALoginRequest,
   User,
@@ -183,6 +185,42 @@ export function sendLogin(req: PasswordLoginRequest): ThunkResponse<LoginRespons
           ...defaultOpts,
           noCredential: true,
           bypassSnackbar: (e) => e instanceof AppError && e.code == Code.Continue,
+        },
+      ),
+    );
+  };
+}
+
+export function sendSMSCode(req: SendSMSCodeRequest): ThunkResponse<any> {
+  return async (dispatch, _getState) => {
+    return await dispatch(
+      send(
+        "/session/sms/code",
+        {
+          data: req,
+          method: "POST",
+        },
+        {
+          ...defaultOpts,
+          noCredential: true,
+        },
+      ),
+    );
+  };
+}
+
+export function sendSMSLogin(req: SMSLoginRequest): ThunkResponse<LoginResponse> {
+  return async (dispatch, _getState) => {
+    return await dispatch(
+      send(
+        "/session/token/sms",
+        {
+          data: req,
+          method: "POST",
+        },
+        {
+          ...defaultOpts,
+          noCredential: true,
         },
       ),
     );

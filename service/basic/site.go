@@ -39,6 +39,7 @@ type SiteConfig struct {
 	CapSiteKey       string              `json:"captcha_cap_site_key,omitempty"`
 	CapAssetServer   string              `json:"captcha_cap_asset_server,omitempty"`
 	RegisterEnabled  bool                `json:"register_enabled,omitempty"`
+	SMSLogin         bool                `json:"sms_login,omitempty"`
 	TosUrl           string              `json:"tos_url,omitempty"`
 	PrivacyPolicyUrl string              `json:"privacy_policy_url,omitempty"`
 
@@ -95,6 +96,7 @@ func (s *GetSettingService) GetSiteConfig(c *gin.Context) (*SiteConfig, error) {
 			ForgetCaptcha:    settings.ForgotPasswordCaptchaEnabled(c),
 			Authn:            settings.AuthnEnabled(c),
 			RegisterEnabled:  settings.RegisterEnabled(c),
+			SMSLogin:         settings.SMSLoginEnabled(c),
 			PrivacyPolicyUrl: legalDocs.PrivacyPolicy,
 			TosUrl:           legalDocs.TermsOfService,
 		}, nil

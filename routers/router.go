@@ -301,6 +301,15 @@ func initMasterRouter(dep dependency.Dep) *gin.Engine {
 					controllers.UserLogin2FAValidation,
 					controllers.UserIssueToken,
 				)
+				// Phone-number (SMS) verification-code login / auto-registration
+				token.POST("sms",
+					middleware.IsFunctionEnabled(func(c *gin.Context) bool {
+						return dep.SettingProvider().SMSLoginEnabled(c)
+					}),
+					controllers.FromJSON[usersvc.SMSLoginService](usersvc.SMSLoginParameterCtx{}),
+					controllers.UserSMSLoginValidation,
+					controllers.UserIssueToken,
+				)
 				token.POST("refresh",
 					middleware.RequiredScopes(types.ScopeOfflineAccess),
 					controllers.FromJSON[usersvc.RefreshTokenService](usersvc.RefreshTokenParameterCtx{}),
@@ -316,6 +325,15 @@ func initMasterRouter(dep dependency.Dep) *gin.Engine {
 			session.GET("prepare",
 				controllers.FromQuery[usersvc.PrepareLoginService](usersvc.PrepareLoginParameterCtx{}),
 				controllers.UserPrepareLogin,
+			)
+
+			// Send phone-number (SMS) verification code
+			session.POST("sms/code",
+				middleware.IsFunctionEnabled(func(c *gin.Context) bool {
+					return dep.SettingProvider().SMSLoginEnabled(c)
+				}),
+				controllers.FromJSON[usersvc.SendSMSCodeService](usersvc.SendSMSCodeParameterCtx{}),
+				controllers.UserSendSMSCode,
 			)
 
 			oauthRouter := session.Group("oauth")

@@ -67,6 +67,30 @@ type SMTP struct {
 	Keepalive       int
 }
 
+// SMS holds the configuration of the SMS gateway (联通 028lk) used for
+// phone-number verification-code login / registration.
+type SMS struct {
+	// Enabled turns the phone-number login channel on/off.
+	Enabled bool
+	// SecretName / SecretKey are the API credentials (明文鉴权).
+	SecretName string
+	SecretKey  string
+	// SignName is the SMS signature, e.g. "【签名】". Empty means the gateway
+	// auto-selects the first bound signature.
+	SignName string
+	// Endpoint is the send API URL.
+	Endpoint string
+	// Template is the message body template; the literal "{code}" is replaced
+	// with the generated verification code.
+	Template string
+	// CodeTTL is how long (seconds) a generated code stays valid.
+	CodeTTL int
+	// SendInterval is the minimum seconds between two code requests for a phone.
+	SendInterval int
+	// AutoRegister creates a new account on first successful phone login.
+	AutoRegister bool
+}
+
 type TokenAuth struct {
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration

@@ -47,12 +47,13 @@ interface PhaseCollectEmailProps {
   setEmail: (email: string) => void;
   control?: Control;
   onOAuthPasskeyLogin?: (response: LoginResponse) => void;
+  onSMSLogin?: () => void;
 }
 
-const PhaseCollectEmail = ({ email, setEmail, control, onOAuthPasskeyLogin }: PhaseCollectEmailProps) => {
+const PhaseCollectEmail = ({ email, setEmail, control, onOAuthPasskeyLogin, onSMSLogin }: PhaseCollectEmailProps) => {
   const { t } = useTranslation();
   const query = useQuery();
-  const { register_enabled, authn } = useAppSelector((state) => state.siteConfig.login.config);
+  const { register_enabled, authn, sms_login } = useAppSelector((state) => state.siteConfig.login.config);
   const tos = useAppSelector((state) => state.siteConfig.login.config.tos_url);
   const privacyPolicy = useAppSelector((state) => state.siteConfig.login.config.privacy_policy_url);
 
@@ -85,6 +86,13 @@ const PhaseCollectEmail = ({ email, setEmail, control, onOAuthPasskeyLogin }: Ph
       </FormControl>
       {control?.submit}
       {control?.back}
+      {sms_login && onSMSLogin && (
+        <Box sx={{ mt: 2, textAlign: "center" }}>
+          <Link component={"button"} type={"button"} underline="hover" variant={"body2"} onClick={onSMSLogin}>
+            {t("login.phoneLoginEntry")}
+          </Link>
+        </Box>
+      )}
       {register_enabled && (
         <Box sx={{ mt: 2, typography: "body2", textAlign: "center" }}>
           <Trans

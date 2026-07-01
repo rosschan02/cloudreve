@@ -48,6 +48,10 @@ type (
 		DefaultGroup(ctx context.Context) int
 		// SMTP returns the SMTP settings.
 		SMTP(ctx context.Context) *SMTP
+		// SMS returns the SMS gateway configuration for phone-number login.
+		SMS(ctx context.Context) *SMS
+		// SMSLoginEnabled returns true if phone-number verification-code login is enabled.
+		SMSLoginEnabled(ctx context.Context) bool
 		// SiteURL returns the basic URL.
 		SiteURL(ctx context.Context) *url.URL
 		// SecretKey returns the secret key for general signature.
@@ -796,6 +800,24 @@ func (s *settingProvider) SMTP(ctx context.Context) *SMTP {
 		ForceEncryption: s.getBoolean(ctx, "smtpEncryption", false),
 		Port:            s.getInt(ctx, "smtpPort", 25),
 		Keepalive:       s.getInt(ctx, "mail_keepalive", 30),
+	}
+}
+
+func (s *settingProvider) SMSLoginEnabled(ctx context.Context) bool {
+	return s.getBoolean(ctx, "sms_login_enabled", false)
+}
+
+func (s *settingProvider) SMS(ctx context.Context) *SMS {
+	return &SMS{
+		Enabled:      s.getBoolean(ctx, "sms_login_enabled", false),
+		SecretName:   s.getString(ctx, "sms_secret_name", ""),
+		SecretKey:    s.getString(ctx, "sms_secret_key", ""),
+		SignName:     s.getString(ctx, "sms_sign_name", ""),
+		Endpoint:     s.getString(ctx, "sms_endpoint", "https://api.028lk.com/Sms/Api/Send"),
+		Template:     s.getString(ctx, "sms_template", "您的验证码是 {code}，5分钟内有效，请勿泄露。"),
+		CodeTTL:      s.getInt(ctx, "sms_code_ttl", 300),
+		SendInterval: s.getInt(ctx, "sms_send_interval", 60),
+		AutoRegister: s.getBoolean(ctx, "sms_auto_register", true),
 	}
 }
 

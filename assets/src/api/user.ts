@@ -71,6 +71,15 @@ export interface TwoFALoginRequest {
   session_id: string;
 }
 
+export interface SendSMSCodeRequest {
+  phone: string;
+}
+
+export interface SMSLoginRequest {
+  phone: string;
+  code: string;
+}
+
 export interface RefreshTokenRequest {
   refresh_token: string;
 }

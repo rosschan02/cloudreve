@@ -13,6 +13,7 @@ import {
   sendLogin,
   sendPrepareLogin,
   sendResetEmail,
+  sendSMSLogin,
 } from "../../../../api/api.ts";
 import { AppError, Code } from "../../../../api/request.ts";
 import { AppRegistration, GrantService, LoginResponse, PrepareLoginResponse } from "../../../../api/user.ts";
@@ -31,6 +32,7 @@ import PhaseCollectPassword from "../Phases/PhaseCollectPassword.tsx";
 import PhaseConsent from "../Phases/PhaseConsent.tsx";
 import PhaseForgetPassword from "../Phases/PhaseForgetPassword.tsx";
 import PhaseSignupNeeded from "../Phases/PhaseSignupNeeded.tsx";
+import PhaseSMSLogin from "../Phases/PhaseSMSLogin.tsx";
 import "../SideTransition.css";
 
 // Local storage key for OAuth redirect
@@ -43,6 +45,7 @@ enum EmailLoginPhase {
   Collect2FA,
   ForgetPassword,
   Consent,
+  SMSLogin,
 }
 
 export interface Control {
@@ -91,6 +94,8 @@ const EmailLogin = ({ oauthConsent }: SignInProps) => {
   const [email, setEmail] = useState("");
   const [pwd, setPwd] = useState("");
   const [otp, setOTP] = useState("");
+  const [phone, setPhone] = useState("");
+  const [smsCode, setSmsCode] = useState("");
   const [captchaGen, setCaptchaGen] = useState(0);
   const [loading, setLoading] = useState(false);
   const captchaState = useRef<CaptchaParams>();
@@ -251,6 +256,25 @@ const EmailLogin = ({ oauthConsent }: SignInProps) => {
     [dispatch, isOAuthFlow, handleOAuthSessionSwitch, query],
   );
 
+  const smsLogin = useCallback(
+    async (phone: string, code: string) => {
+      try {
+        setLoading(true);
+        const loginRes = await dispatch(sendSMSLogin({ phone, code }));
+        if (isOAuthFlow) {
+          await handleOAuthSessionSwitch(loginRes);
+        } else {
+          dispatch(refreshUserSession(loginRes, query.get("redirect")));
+        }
+      } catch (e) {
+        // Snackbar handled by request layer.
+      } finally {
+        setLoading(false);
+      }
+    },
+    [dispatch, isOAuthFlow, handleOAuthSessionSwitch, query],
+  );
+
   const submitSendResetEmail = useCallback(
     async (email: string, captcha?: CaptchaParams) => {
       try {
@@ -291,6 +315,9 @@ const EmailLogin = ({ oauthConsent }: SignInProps) => {
         break;
       case EmailLoginPhase.Consent:
         sendConsent();
+        break;
+      case EmailLoginPhase.SMSLogin:
+        smsLogin(phone, smsCode);
         break;
     }
   };
@@ -378,6 +405,13 @@ const EmailLogin = ({ oauthConsent }: SignInProps) => {
           nextButtonText: t("oauth.authorize"),
           showBackButton: true,
           previous: EmailLoginPhase.CollectEmail,
+        };
+        break;
+      case EmailLoginPhase.SMSLogin:
+        phaseSetting = {
+          title: t("login.phoneLogin"),
+          nextButtonText: t("login.signIn"),
+          showBackButton: false,
         };
         break;
       default:
@@ -479,6 +513,17 @@ const EmailLogin = ({ oauthConsent }: SignInProps) => {
                   setEmail={setEmail}
                   control={phaseConfig.control}
                   onOAuthPasskeyLogin={isOAuthFlow ? handleOAuthSessionSwitch : undefined}
+                  onSMSLogin={() => setPhase(EmailLoginPhase.SMSLogin)}
+                />
+              )}
+              {phase === EmailLoginPhase.SMSLogin && (
+                <PhaseSMSLogin
+                  phone={phone}
+                  setPhone={setPhone}
+                  code={smsCode}
+                  setCode={setSmsCode}
+                  control={phaseConfig.control}
+                  onBack={() => setPhase(EmailLoginPhase.CollectEmail)}
                 />
               )}
               {phase === EmailLoginPhase.Consent && app && (

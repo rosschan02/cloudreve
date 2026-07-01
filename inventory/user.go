@@ -127,6 +127,7 @@ type (
 		GroupID       int
 		Avatar        string // Optional
 		Language      string // Optional
+		Phone         string // Optional, for phone-number (SMS) accounts
 	}
 	CreateStoragePackArgs struct {
 		UserID   int
@@ -328,6 +329,9 @@ func (c *userClient) Create(ctx context.Context, args *NewUserArgs) (*ent.User, 
 
 	if args.Language != "" {
 		userSetting.Language = args.Language
+	}
+	if args.Phone != "" {
+		userSetting.Phone = args.Phone
 	}
 	query.SetSettings(userSetting)
 

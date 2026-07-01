@@ -28,6 +28,7 @@ export interface SiteConfig {
   captcha_cap_secret_key?: string;
   captcha_cap_asset_server?: string;
   register_enabled?: boolean;
+  sms_login?: boolean;
   logo?: string;
   logo_light?: string;
   tos_url?: string;

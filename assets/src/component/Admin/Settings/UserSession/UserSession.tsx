@@ -178,6 +178,150 @@ const UserSession = () => {
           </SettingSectionContent>
         </SettingSection>
         <SettingSection>
+          <Typography variant="h6" gutterBottom>
+            {t("settings.smsLogin")}
+          </Typography>
+          <SettingSectionContent>
+            <SettingForm lgWidth={5}>
+              <FormControl fullWidth>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={isTrueVal(values.sms_login_enabled)}
+                      onChange={(e) =>
+                        setSettings({
+                          sms_login_enabled: e.target.checked ? "1" : "0",
+                        })
+                      }
+                    />
+                  }
+                  label={t("settings.smsLoginEnabled")}
+                />
+                <NoMarginHelperText>{t("settings.smsLoginEnabledDes")}</NoMarginHelperText>
+              </FormControl>
+            </SettingForm>
+            <SettingForm title={t("settings.smsSecretName")} lgWidth={5}>
+              <FormControl fullWidth>
+                <DenseFilledTextField
+                  value={values.sms_secret_name ?? ""}
+                  onChange={(e) =>
+                    setSettings({
+                      sms_secret_name: e.target.value,
+                    })
+                  }
+                />
+                <NoMarginHelperText>{t("settings.smsSecretNameDes")}</NoMarginHelperText>
+              </FormControl>
+            </SettingForm>
+            <SettingForm title={t("settings.smsSecretKey")} lgWidth={5}>
+              <FormControl fullWidth>
+                <DenseFilledTextField
+                  value={values.sms_secret_key ?? ""}
+                  type={"password"}
+                  autoComplete={"new-password"}
+                  onChange={(e) =>
+                    setSettings({
+                      sms_secret_key: e.target.value,
+                    })
+                  }
+                />
+                <NoMarginHelperText>{t("settings.smsSecretKeyDes")}</NoMarginHelperText>
+              </FormControl>
+            </SettingForm>
+            <SettingForm title={t("settings.smsSignName")} lgWidth={5}>
+              <FormControl fullWidth>
+                <DenseFilledTextField
+                  value={values.sms_sign_name ?? ""}
+                  onChange={(e) =>
+                    setSettings({
+                      sms_sign_name: e.target.value,
+                    })
+                  }
+                />
+                <NoMarginHelperText>{t("settings.smsSignNameDes")}</NoMarginHelperText>
+              </FormControl>
+            </SettingForm>
+            <SettingForm title={t("settings.smsEndpoint")} lgWidth={5}>
+              <FormControl fullWidth>
+                <DenseFilledTextField
+                  value={values.sms_endpoint ?? ""}
+                  onChange={(e) =>
+                    setSettings({
+                      sms_endpoint: e.target.value,
+                    })
+                  }
+                />
+                <NoMarginHelperText>{t("settings.smsEndpointDes")}</NoMarginHelperText>
+              </FormControl>
+            </SettingForm>
+            <SettingForm title={t("settings.smsTemplate")} lgWidth={5}>
+              <FormControl fullWidth>
+                <DenseFilledTextField
+                  value={values.sms_template ?? ""}
+                  multiline
+                  minRows={2}
+                  onChange={(e) =>
+                    setSettings({
+                      sms_template: e.target.value,
+                    })
+                  }
+                />
+                <NoMarginHelperText>
+                  <Trans i18nKey="settings.smsTemplateDes" ns={"dashboard"} components={[<Code />]} />
+                </NoMarginHelperText>
+              </FormControl>
+            </SettingForm>
+            <SettingForm title={t("settings.smsCodeTtl")} lgWidth={5}>
+              <FormControl fullWidth>
+                <DenseFilledTextField
+                  value={values.sms_code_ttl ?? ""}
+                  type={"number"}
+                  inputProps={{ step: 1, min: 60 }}
+                  onChange={(e) =>
+                    setSettings({
+                      sms_code_ttl: e.target.value,
+                    })
+                  }
+                />
+                <NoMarginHelperText>{t("settings.smsCodeTtlDes")}</NoMarginHelperText>
+              </FormControl>
+            </SettingForm>
+            <SettingForm title={t("settings.smsSendInterval")} lgWidth={5}>
+              <FormControl fullWidth>
+                <DenseFilledTextField
+                  value={values.sms_send_interval ?? ""}
+                  type={"number"}
+                  inputProps={{ step: 1, min: 30 }}
+                  onChange={(e) =>
+                    setSettings({
+                      sms_send_interval: e.target.value,
+                    })
+                  }
+                />
+                <NoMarginHelperText>{t("settings.smsSendIntervalDes")}</NoMarginHelperText>
+              </FormControl>
+            </SettingForm>
+            <SettingForm lgWidth={5}>
+              <FormControl fullWidth>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={isTrueVal(values.sms_auto_register)}
+                      onChange={(e) =>
+                        setSettings({
+                          sms_auto_register: e.target.checked ? "1" : "0",
+                        })
+                      }
+                    />
+                  }
+                  label={t("settings.smsAutoRegister")}
+                />
+                <NoMarginHelperText>{t("settings.smsAutoRegisterDes")}</NoMarginHelperText>
+              </FormControl>
+            </SettingForm>
+          </SettingSectionContent>
+        </SettingSection>
+        <SettingSection>
           <Typography variant="h6" gutterBottom sx={{ display: "flex", alignItems: "center" }}>
             {t("settings.thirdPartySignIn")} <ProChip label="Pro" color="primary" size="small" />
           </Typography>

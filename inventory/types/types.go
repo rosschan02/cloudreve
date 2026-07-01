@@ -17,6 +17,8 @@ type (
 		DisableViewSync     bool                     `json:"disable_view_sync,omitempty"`
 		FsViewMap           map[string]ExplorerView  `json:"fs_view_map,omitempty"`
 		ShareLinksInProfile ShareLinksInProfileLevel `json:"share_links_in_profile,omitempty"`
+		// Phone is the bound mobile number for phone-number (SMS) login accounts.
+		Phone string `json:"phone,omitempty"`
 	}
 
 	ShareLinksInProfileLevel string
